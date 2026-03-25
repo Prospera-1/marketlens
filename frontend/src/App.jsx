@@ -10,9 +10,10 @@ import ExportButton from './components/ExportButton';
 import AdLibraryPanel from './components/AdLibraryPanel';
 
 const API_BASE = "http://localhost:8000/api";
+const COMPETITOR_DISCOVERY_BASE = "http://localhost:8000";
+const USER_COMPANY = "Hyundai";
 
 export default function App() {
-  const [urls, setUrls] = useState("");
   const [includeReviews, setIncludeReviews] = useState(true);
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -22,6 +23,8 @@ export default function App() {
   const [data, setData] = useState(null);
   const [positioning, setPositioning] = useState(null);
   const [trends, setTrends] = useState(null);
+  const [competitorDiscovery, setCompetitorDiscovery] = useState(null);
+  const [competitorDiscoveryLoading, setCompetitorDiscoveryLoading] = useState(true);
 
   const fetchDashboardData = async () => {
     try {
@@ -36,18 +39,18 @@ export default function App() {
         axios.get(`${API_BASE}/trends`),
       ]);
 
-      const snapshots     = snapshotsRes.data.snapshots || [];
-      const diff          = diffRes.data;
-      const insightsData  = insightsRes.data;
+      const snapshots = snapshotsRes.data.snapshots || [];
+      const diff = diffRes.data;
+      const insightsData = insightsRes.data;
 
       setPositioning(positioningRes.data);
       setTrends(trendsRes.data);
       setData({
-        latestSnapshot:  snapshots.length > 0 ? snapshots[0] : null,
-        diff:            diff.changes || [],
-        scoringSummary:  diff.scoring_summary || null,
-        insights:        insightsData.insights || [],
-        whitespace:      insightsData.whitespace || [],
+        latestSnapshot: snapshots.length > 0 ? snapshots[0] : null,
+        diff: diff.changes || [],
+        scoringSummary: diff.scoring_summary || null,
+        insights: insightsData.insights || [],
+        whitespace: insightsData.whitespace || [],
         insightsGeneratedAt: insightsData.generated_at || null,
       });
     } catch (err) {
@@ -59,32 +62,59 @@ export default function App() {
 
   useEffect(() => { fetchDashboardData(); }, []);
 
+  const loadCompetitorDiscovery = async () => {
+    setCompetitorDiscoveryLoading(true);
+    setError("");
+    try {
+      const res = await axios.get(
+        `${COMPETITOR_DISCOVERY_BASE}/get-competitors?company=${encodeURIComponent(USER_COMPANY)}`
+      );
+      setCompetitorDiscovery(res.data);
+    } catch (err) {
+      const detail = err.response?.data?.detail;
+      const msg =
+        typeof detail === "object" && detail?.error
+          ? detail.error
+          : typeof detail === "string"
+            ? detail
+            : err.message;
+      setError("Competitor discovery failed. " + msg);
+    } finally {
+      setCompetitorDiscoveryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCompetitorDiscovery();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const competitorUrls = competitorDiscovery?.competitors?.map((c) => c.url).filter(Boolean) || [];
+
   const handleScrape = async () => {
-    const urlList = urls.split(',').map(u => u.trim()).filter(u => u);
-    if (urlList.length === 0) return;
+    if (competitorUrls.length === 0) return;
 
     setLoading(true);
     setError("");
     setSeedSuccess(false);
     try {
-      await axios.post(`${API_BASE}/fetch`, { urls: urlList, include_reviews: includeReviews });
+      await axios.post(`${API_BASE}/fetch`, { urls: competitorUrls, include_reviews: includeReviews });
       await fetchDashboardData();
-      setUrls("");
     } catch (err) {
-      setError("Failed to scrape URLs. " + (err.response?.data?.detail || err.message));
+      setError("Failed to scrape competitor pages. " + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
   };
 
   const handleSeed = async () => {
-    const urlList = urls.split(',').map(u => u.trim()).filter(u => u);
-    // If no URLs typed, the backend will reuse the latest snapshot's URLs
+    if (competitorUrls.length === 0) return;
+
     setSeeding(true);
     setError("");
     setSeedSuccess(false);
     try {
-      const res = await axios.post(`${API_BASE}/seed`, { urls: urlList, days_ago: 7 });
+      const res = await axios.post(`${API_BASE}/seed`, { urls: competitorUrls, days_ago: 7 });
       setSeedSuccess(res.data.urls_seeded);
     } catch (err) {
       setError("Seed failed. " + (err.response?.data?.detail || err.message));
@@ -98,14 +128,19 @@ export default function App() {
     setError("");
     try {
       const res = await axios.post(`${API_BASE}/insights/generate`);
-      setData(prev => prev ? {
-        ...prev,
-        insights: res.data.insights || [],
-        whitespace: res.data.whitespace || [],
-      } : prev);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              insights: res.data.insights || [],
+              whitespace: res.data.whitespace || [],
+            }
+          : prev
+      );
     } catch (err) {
       const detail = err.response?.data?.detail || err.message;
-      const is429 = detail?.includes('429') || detail?.includes('RESOURCE_EXHAUSTED') || detail?.includes('quota');
+      const is429 =
+        detail?.includes("429") || detail?.includes("RESOURCE_EXHAUSTED") || detail?.includes("quota");
       setError(
         is429
           ? "Gemini API quota reached. Wait a minute and try again, or check your plan at https://ai.dev/rate-limit."
@@ -115,6 +150,19 @@ export default function App() {
       setGeneratingInsights(false);
     }
   };
+
+  const competitorsForDisplay = data?.latestSnapshot?.competitors_data?.length
+    ? data.latestSnapshot.competitors_data
+    : (competitorDiscovery?.competitors || []).map((c) => ({
+        title: c.name,
+        url: c.url,
+        reviews: {},
+      }));
+
+  const diffChanges = data?.diff || [];
+  const scoringSummary = data?.scoringSummary ?? null;
+  const insights = data?.insights || [];
+  const whitespace = data?.whitespace || [];
 
   return (
     <div className="min-h-screen bg-slate-50 p-8 font-sans text-slate-900">
@@ -128,19 +176,11 @@ export default function App() {
           </div>
 
           <div className="flex flex-col items-end gap-3">
-            <div className="flex items-center gap-3">
-              <input
-                type="text"
-                placeholder="Enter URLs (comma separated)"
-                className="px-4 py-2 border rounded-lg w-80 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                value={urls}
-                onChange={e => setUrls(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleScrape()}
-              />
+            <div className="flex items-center gap-3 flex-wrap justify-end">
               <button
                 onClick={handleSeed}
-                disabled={seeding || loading}
-                title="Creates a modified baseline snapshot dated 7 days ago. Then run the scraper to see changes."
+                disabled={seeding || loading || competitorDiscoveryLoading || competitorUrls.length === 0}
+                title="Creates a modified baseline snapshot (Hyundai competitors) dated 7 days ago."
                 className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition shadow shadow-amber-400/30 disabled:opacity-70 text-sm"
               >
                 {seeding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FlaskConical className="w-4 h-4" />}
@@ -157,11 +197,11 @@ export default function App() {
               </button>
               <button
                 onClick={handleScrape}
-                disabled={loading || seeding}
+                disabled={loading || seeding || competitorDiscoveryLoading || competitorUrls.length === 0}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium flex items-center gap-2 transition shadow shadow-blue-500/30 disabled:opacity-70 text-sm"
               >
                 {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                Run Scraper
+                Fetch Competitor Pages
               </button>
               <ExportButton />
               <button
@@ -177,7 +217,7 @@ export default function App() {
               <input
                 type="checkbox"
                 checked={includeReviews}
-                onChange={e => setIncludeReviews(e.target.checked)}
+                onChange={(e) => setIncludeReviews(e.target.checked)}
                 className="rounded"
               />
               Include G2 &amp; Trustpilot reviews <span className="text-slate-400">(slower)</span>
@@ -191,7 +231,7 @@ export default function App() {
             <p className="font-semibold mb-1">Demo baseline seeded for {seedSuccess.length} URL(s)</p>
             <p className="text-amber-700">
               A modified snapshot dated 7 days ago has been saved. Now click
-              <strong> Run Scraper</strong> with the same URLs — the dashboard will show realistic changes.
+              <strong> Fetch Competitor Pages</strong> with the same URLs — the dashboard will show realistic changes.
             </p>
             <ul className="mt-2 list-disc pl-5 text-amber-600 space-y-0.5">
               {seedSuccess.map((u, i) => <li key={i}>{u}</li>)}
@@ -208,42 +248,46 @@ export default function App() {
         )}
 
         {/* Loading / seeding state */}
-        {(loading || seeding || generatingInsights) && (
+        {(loading || seeding || generatingInsights || competitorDiscoveryLoading) && (
           <div className="text-center py-6 text-slate-500 text-sm flex items-center justify-center gap-2">
             <RefreshCw className="w-4 h-4 animate-spin" />
-            {generatingInsights
-              ? "Calling Gemini AI… generating strategic insights and whitespace opportunities."
-              : seeding
-                ? "Seeding demo baseline… scraping pages and applying mutations."
-                : includeReviews
-                  ? "Scraping pages + G2/Trustpilot reviews… this may take 30–60 seconds."
-                  : "Scraping pages…"}
+            {competitorDiscoveryLoading
+              ? `Loading competitors for ${USER_COMPANY}…`
+              : generatingInsights
+                ? "Calling Gemini AI… generating strategic insights and whitespace opportunities."
+                : seeding
+                  ? "Seeding demo baseline… scraping pages and applying mutations."
+                  : includeReviews
+                    ? "Scraping pages + G2/Trustpilot reviews… this may take 30–60 seconds."
+                    : "Scraping pages…"}
           </div>
         )}
 
         {/* Empty state */}
-        {!data?.latestSnapshot && !loading && (
+        {!data?.latestSnapshot && !loading && !competitorDiscoveryLoading && competitorUrls.length === 0 && (
           <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300">
             <Search className="w-12 h-12 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium">No Data Yet</h3>
             <p className="text-slate-500 mt-1 text-sm">
-              Add competitor URLs above to generate the first snapshot.
+              No competitor URLs found for {USER_COMPANY}.
             </p>
           </div>
         )}
 
         {/* Main dashboard */}
-        {data?.latestSnapshot && (
+        {(data?.latestSnapshot || competitorsForDisplay?.length > 0) && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
             {/* Left column */}
             <div className="lg:col-span-2 space-y-8">
-              <DiffPanel changes={data.diff} scoringSummary={data.scoringSummary} />
+              <DiffPanel changes={diffChanges} scoringSummary={scoringSummary} />
 
               <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                <h2 className="text-xl font-bold mb-6">Current Market Landscape</h2>
+                <h2 className="text-xl font-bold mb-6">
+                  {data?.latestSnapshot ? "Current Market Landscape" : `Hyundai Competitors (${competitorUrls.length})`}
+                </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {data.latestSnapshot.competitors_data.map((comp, idx) => (
+                  {competitorsForDisplay.map((comp, idx) => (
                     <CompetitorCard key={idx} comp={comp} />
                   ))}
                 </div>
@@ -256,8 +300,8 @@ export default function App() {
 
             {/* Right column */}
             <div className="space-y-8">
-              <InsightsPanel insights={data.insights} generatedAt={data.insightsGeneratedAt} />
-              <WhitespacePanel whitespace={data.whitespace} />
+              <InsightsPanel insights={insights} generatedAt={data?.insightsGeneratedAt} />
+              <WhitespacePanel whitespace={whitespace} />
             </div>
 
           </div>

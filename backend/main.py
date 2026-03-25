@@ -26,6 +26,13 @@ from backend.seed_engine import seed_snapshots, get_tracked_urls
 from backend.positioning_engine import build_positioning_map
 from backend.trend_engine import build_trends
 from backend.ad_scraper import fetch_ads
+from backend.competitor_discovery.competitor_engine import (
+    CompanyNotFoundError,
+    CompetitorDiscoveryError,
+    IndustryMissingError,
+    get_competitors,
+)
+from backend.competitor_discovery.url_resolver import UrlFetchFailureError
 
 app = FastAPI(title="Competitor AI Dashboard API")
 
@@ -319,3 +326,26 @@ def get_trends():
         return build_trends()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/get-competitors")
+def get_competitors_endpoint(company: str):
+    """
+    Deterministic competitor discovery (JSON dataset + optional fuzzy / URL fallback).
+    Example: /get-competitors?company=Hyundai
+    """
+    try:
+        return get_competitors(company)
+    except CompanyNotFoundError as e:
+        payload = {"error": str(e)}
+        if e.suggestions:
+            payload["suggestions"] = e.suggestions
+        raise HTTPException(status_code=404, detail=payload)
+    except IndustryMissingError as e:
+        raise HTTPException(status_code=500, detail={"error": str(e)})
+    except UrlFetchFailureError as e:
+        raise HTTPException(status_code=502, detail={"error": str(e)})
+    except CompetitorDiscoveryError as e:
+        raise HTTPException(status_code=400, detail={"error": str(e)})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail={"error": f"Unexpected error: {e}"})
