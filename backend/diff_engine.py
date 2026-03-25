@@ -1,6 +1,7 @@
 import json
 import os
 from typing import List, Dict, Any, Tuple
+from backend.scoring_engine import score_diff
 
 
 def get_latest_two_snapshots(snapshots_dir: str) -> Tuple[Dict | None, Dict | None]:
@@ -149,9 +150,10 @@ def generate_diff() -> Dict[str, Any]:
                     "removed": [f"Trustpilot: {old_tp['trust_score']}/5"],
                 })
 
-    return {
+    raw = {
         "status": "success",
         "timestamp_latest": latest.get("timestamp"),
         "timestamp_previous": previous.get("timestamp"),
         "changes": changes,
     }
+    return score_diff(raw)

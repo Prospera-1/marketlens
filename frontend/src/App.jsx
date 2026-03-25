@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { RefreshCw, Play, AlertCircle, Search, FlaskConical } from 'lucide-react';
+import { RefreshCw, Play, AlertCircle, Search, FlaskConical, Sparkles } from 'lucide-react';
 import CompetitorCard from './components/CompetitorCard';
 import DiffPanel from './components/DiffPanel';
 import { InsightsPanel, WhitespacePanel } from './components/InsightsPanel';
+import PositioningMatrix from './components/PositioningMatrix';
+import TrendsPanel from './components/TrendsPanel';
+import ExportButton from './components/ExportButton';
+import AdLibraryPanel from './components/AdLibraryPanel';
 
 const API_BASE = "http://localhost:8000/api";
 
@@ -12,30 +16,39 @@ export default function App() {
   const [includeReviews, setIncludeReviews] = useState(true);
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [generatingInsights, setGeneratingInsights] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
+  const [positioning, setPositioning] = useState(null);
+  const [trends, setTrends] = useState(null);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const [snapshotsRes, diffRes, insightsRes] = await Promise.all([
+      const [snapshotsRes, diffRes, insightsRes, positioningRes, trendsRes] = await Promise.all([
         axios.get(`${API_BASE}/snapshots`),
         axios.get(`${API_BASE}/diff`),
         axios.get(`${API_BASE}/insights`),
+        axios.get(`${API_BASE}/positioning`),
+        axios.get(`${API_BASE}/trends`),
       ]);
 
-      const snapshots = snapshotsRes.data.snapshots || [];
-      const diff = diffRes.data;
-      const insightsData = insightsRes.data;
+      const snapshots     = snapshotsRes.data.snapshots || [];
+      const diff          = diffRes.data;
+      const insightsData  = insightsRes.data;
 
+      setPositioning(positioningRes.data);
+      setTrends(trendsRes.data);
       setData({
-        latestSnapshot: snapshots.length > 0 ? snapshots[0] : null,
-        diff: diff.changes || [],
-        insights: insightsData.insights || [],
-        whitespace: insightsData.whitespace || [],
+        latestSnapshot:  snapshots.length > 0 ? snapshots[0] : null,
+        diff:            diff.changes || [],
+        scoringSummary:  diff.scoring_summary || null,
+        insights:        insightsData.insights || [],
+        whitespace:      insightsData.whitespace || [],
+        insightsGeneratedAt: insightsData.generated_at || null,
       });
     } catch (err) {
       setError("Failed to fetch dashboard data. Ensure backend is running. " + err.message);
@@ -80,6 +93,29 @@ export default function App() {
     }
   };
 
+  const handleGenerateInsights = async () => {
+    setGeneratingInsights(true);
+    setError("");
+    try {
+      const res = await axios.post(`${API_BASE}/insights/generate`);
+      setData(prev => prev ? {
+        ...prev,
+        insights: res.data.insights || [],
+        whitespace: res.data.whitespace || [],
+      } : prev);
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.message;
+      const is429 = detail?.includes('429') || detail?.includes('RESOURCE_EXHAUSTED') || detail?.includes('quota');
+      setError(
+        is429
+          ? "Gemini API quota reached. Wait a minute and try again, or check your plan at https://ai.dev/rate-limit."
+          : "Failed to generate insights. " + detail
+      );
+    } finally {
+      setGeneratingInsights(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-8 font-sans text-slate-900">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -111,6 +147,15 @@ export default function App() {
                 Seed Demo
               </button>
               <button
+                onClick={handleGenerateInsights}
+                disabled={generatingInsights || loading || seeding}
+                title="Call Gemini AI to generate strategic insights and whitespace opportunities from current data."
+                className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition shadow shadow-violet-500/30 disabled:opacity-70 text-sm"
+              >
+                {generatingInsights ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                Generate Insights
+              </button>
+              <button
                 onClick={handleScrape}
                 disabled={loading || seeding}
                 className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium flex items-center gap-2 transition shadow shadow-blue-500/30 disabled:opacity-70 text-sm"
@@ -118,6 +163,7 @@ export default function App() {
                 {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                 Run Scraper
               </button>
+              <ExportButton />
               <button
                 onClick={fetchDashboardData}
                 className="p-2 border rounded-lg hover:bg-slate-100 text-slate-600"
@@ -162,14 +208,16 @@ export default function App() {
         )}
 
         {/* Loading / seeding state */}
-        {(loading || seeding) && (
+        {(loading || seeding || generatingInsights) && (
           <div className="text-center py-6 text-slate-500 text-sm flex items-center justify-center gap-2">
             <RefreshCw className="w-4 h-4 animate-spin" />
-            {seeding
-              ? "Seeding demo baseline… scraping pages and applying mutations."
-              : includeReviews
-                ? "Scraping pages + G2/Trustpilot reviews… this may take 30–60 seconds."
-                : "Scraping pages…"}
+            {generatingInsights
+              ? "Calling Gemini AI… generating strategic insights and whitespace opportunities."
+              : seeding
+                ? "Seeding demo baseline… scraping pages and applying mutations."
+                : includeReviews
+                  ? "Scraping pages + G2/Trustpilot reviews… this may take 30–60 seconds."
+                  : "Scraping pages…"}
           </div>
         )}
 
@@ -190,7 +238,7 @@ export default function App() {
 
             {/* Left column */}
             <div className="lg:col-span-2 space-y-8">
-              <DiffPanel changes={data.diff} />
+              <DiffPanel changes={data.diff} scoringSummary={data.scoringSummary} />
 
               <section className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                 <h2 className="text-xl font-bold mb-6">Current Market Landscape</h2>
@@ -200,11 +248,15 @@ export default function App() {
                   ))}
                 </div>
               </section>
+
+              <PositioningMatrix positioningData={positioning} />
+              <TrendsPanel trendsData={trends} />
+              <AdLibraryPanel />
             </div>
 
             {/* Right column */}
             <div className="space-y-8">
-              <InsightsPanel insights={data.insights} />
+              <InsightsPanel insights={data.insights} generatedAt={data.insightsGeneratedAt} />
               <WhitespacePanel whitespace={data.whitespace} />
             </div>
 

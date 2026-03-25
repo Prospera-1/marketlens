@@ -22,6 +22,11 @@ def fetch_html(url: str) -> str | None:
     try:
         response = requests.get(url, headers=_FETCH_HEADERS, timeout=15, verify=False)
         response.raise_for_status()
+        # Force UTF-8 decoding — requests often misdetects encoding as ISO-8859-1,
+        # which corrupts multi-byte characters like ₹ (U+20B9) into â¹.
+        response.encoding = response.apparent_encoding or 'utf-8'
+        if response.encoding.lower() in ('iso-8859-1', 'latin-1', 'ascii'):
+            response.encoding = 'utf-8'
         return response.text
     except Exception as e:
         print(f"Error fetching {url}: {e}")
@@ -116,6 +121,9 @@ def _extract_ctas(soup: BeautifulSoup) -> list[str]:
     for tag in soup.find_all(['button', 'a']):
         text = ' '.join(tag.get_text().split())  # normalise whitespace
         if not text or len(text) < 3 or len(text) > 60:
+            continue
+        # Skip anchor tags whose visible text is just their own URL
+        if text.startswith(('http://', 'https://', 'www.')):
             continue
         word_count = len(text.split())
         if word_count > 6:
@@ -222,6 +230,9 @@ def extract_data(html: str, url: str, is_fallback: bool = False) -> dict | None:
     pricing_keywords = ['price', 'pricing', 'plan', '$', '\u20b9', 'lakh', 'rs.', 'month', 'year', '/mo']
     for elem in soup.find_all(['div', 'p', 'span', 'li', 'td', 'h2', 'h3', 'h4']):
         text = elem.get_text(separator=' ', strip=True)
+        # Skip raw URLs and CDN/file paths that can leak into text nodes on CMS sites
+        if text.startswith(('http://', 'https://', '/adobe/', '/assets/', '/content/')):
+            continue
         if any(kw in text.lower() for kw in pricing_keywords) and len(text) < 200:
             if text not in pricing:
                 pricing.append(text)
@@ -234,7 +245,8 @@ def extract_data(html: str, url: str, is_fallback: bool = False) -> dict | None:
             with sync_playwright() as p:
                 browser = p.chromium.launch(headless=True)
                 page = browser.new_page()
-                page.goto(url, wait_until="networkidle", timeout=20000)
+                page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                page.wait_for_timeout(2000)  # let JS render after DOM loads
                 pw_html = page.content()
                 browser.close()
             return extract_data(pw_html, url, is_fallback=True)

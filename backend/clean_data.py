@@ -1,6 +1,19 @@
 import json
 import os
 import glob
+import re
+
+_MONTH_NAMES = {
+    'january', 'february', 'march', 'april', 'may', 'june',
+    'july', 'august', 'september', 'october', 'november', 'december',
+}
+
+# Accessory / spare-part type words that appear in category filter lists on car sites
+_ACCESSORY_SIGNALS = {
+    'seat cover', 'mud flap', 'floor mat', 'door visor', 'door handle',
+    'alloy wheel', 'body cover', 'sun shade', 'car perfume', 'steering cover',
+    'garnish', 'chrome', 'boot mat', 'car cover', 'carpet',
+}
 
 def get_latest_snapshot():
     files = glob.glob('snapshots/*.json')
@@ -38,6 +51,42 @@ def clean_text_list(texts, min_len=5, max_len=150, is_price=False):
         nav_prefixes = ('view all', 'see all', 'show all', 'load more', 'start a new',
                         'read all', 'show more', 'latest questions', 'popular mentions')
         if text.lower().startswith(nav_prefixes):
+            continue
+
+        # 2b-ii. Calendar widget noise — strings with 3+ month names are date-picker UI
+        if not is_price:
+            words = set(text.lower().split())
+            if len(words & _MONTH_NAMES) >= 3:
+                continue
+
+        # 2b-iii. Accessory category filter lists — long strings built from
+        #         joining accessory type names (common on car product pages)
+        if not is_price:
+            text_lower = text.lower()
+            accessory_hits = sum(1 for sig in _ACCESSORY_SIGNALS if sig in text_lower)
+            if accessory_hits >= 2:
+                continue
+
+        # 2c. Filter out raw URLs and file/CDN paths masquerading as content.
+        #     These appear on AEM/CMS sites where image src paths leak into text nodes.
+        stripped = text.strip()
+        if stripped.startswith(('http://', 'https://', '/adobe/', '/assets/', '/content/')):
+            continue
+        # File path patterns: starts with '/' and contains an image/media extension
+        if re.match(r'^/[^\s]+\.(jpg|jpeg|png|gif|svg|webp|mp4|pdf)(\?.*)?$', stripped, re.IGNORECASE):
+            continue
+
+        # 2b-iv. Location-based dealer/locator prompts — always noise in features.
+        #        "your city", "near you", "find a dealer", "your location" etc.
+        _location_signals = {'your city', 'near you', 'your area', 'your location',
+                             'nearest dealer', 'find a showroom', 'nearest showroom'}
+        if not is_price and any(sig in text.lower() for sig in _location_signals):
+            continue
+
+        # 2d. For features (not pricing), require at least 4 words.
+        #     Short strings like "Harrier and Safari" or "Learn More" are navigation
+        #     labels, banner captions, or product names — not meaningful features.
+        if not is_price and len(text.split()) < 4:
             continue
 
         # 3. For features (not pricing), exclude items that look like non-content cards.

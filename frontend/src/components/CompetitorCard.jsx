@@ -1,4 +1,5 @@
-import { ExternalLink, Star, MessageSquare } from 'lucide-react';
+import { useState } from 'react';
+import { ExternalLink, Star, MessageSquare, Globe, ChevronDown, ChevronUp } from 'lucide-react';
 
 function ReviewBadge({ platform, data }) {
   if (!data) return null;
@@ -21,6 +22,8 @@ function ReviewBadge({ platform, data }) {
 
 export default function CompetitorCard({ comp }) {
   const reviews = comp.reviews || {};
+  const pagesCrawled = comp.pages_crawled || [];
+  const [showPages, setShowPages] = useState(false);
 
   return (
     <div className="border border-slate-200 rounded-xl p-5 space-y-4 bg-white">
@@ -28,10 +31,37 @@ export default function CompetitorCard({ comp }) {
       {/* Header */}
       <div>
         <h3 className="font-bold text-lg leading-tight">{comp.title || comp.url}</h3>
-        <a href={comp.url} target="_blank" rel="noreferrer"
-           className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1 mt-0.5">
-          <ExternalLink className="w-3 h-3" /> Visit Site
-        </a>
+        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+          <a href={comp.url} target="_blank" rel="noreferrer"
+             className="text-sm text-blue-600 hover:underline inline-flex items-center gap-1">
+            <ExternalLink className="w-3 h-3" /> Visit Site
+          </a>
+          {pagesCrawled.length > 0 && (
+            <button
+              onClick={() => setShowPages(s => !s)}
+              className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition"
+              title="Pages analysed in this snapshot"
+            >
+              <Globe className="w-3 h-3" />
+              {pagesCrawled.length} page{pagesCrawled.length !== 1 ? 's' : ''} crawled
+              {showPages ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+          )}
+        </div>
+
+        {/* Crawled pages list (expandable) */}
+        {showPages && pagesCrawled.length > 0 && (
+          <ul className="mt-2 space-y-0.5">
+            {pagesCrawled.map((url, i) => (
+              <li key={i}>
+                <a href={url} target="_blank" rel="noreferrer"
+                   className="text-xs text-slate-400 hover:text-blue-500 truncate block">
+                  {url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {/* Review badges */}

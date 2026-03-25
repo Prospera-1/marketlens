@@ -6,7 +6,9 @@ extracts ratings, pros/cons, and recent review snippets using Playwright.
 """
 
 import re
+import asyncio
 import warnings
+import concurrent.futures
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup  # type: ignore
 from urllib3.exceptions import InsecureRequestWarning  # type: ignore
@@ -26,30 +28,55 @@ def _company_slug(url: str) -> str:
     return _domain(url).split('.')[0]
 
 
+def _playwright_fetch_impl(url: str, wait_ms: int) -> tuple[str | None, int]:
+    """Inner Playwright fetch — must run in a thread with a SelectorEventLoop."""
+    from playwright.sync_api import sync_playwright  # type: ignore
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            viewport={"width": 1280, "height": 900},
+        )
+        page = context.new_page()
+        response = page.goto(url, wait_until="domcontentloaded", timeout=25000)
+        status = response.status if response else 0
+        if status == 404:
+            browser.close()
+            return None, 404
+        page.wait_for_timeout(wait_ms)
+        html = page.content()
+        browser.close()
+        return html, status
+
+
+def _playwright_fetch_thread(url: str, wait_ms: int) -> tuple[str | None, int]:
+    """
+    Run Playwright in a thread with an explicit SelectorEventLoop.
+
+    On Windows, uvicorn uses ProactorEventLoop which cannot spawn subprocesses
+    from worker threads (raises NotImplementedError).  Setting a SelectorEventLoop
+    inside the dedicated thread resolves this without touching the main loop.
+    """
+    if hasattr(asyncio, 'WindowsSelectorEventLoopPolicy'):
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return _playwright_fetch_impl(url, wait_ms)
+    finally:
+        loop.close()
+
+
 def _playwright_fetch(url: str, wait_ms: int = 3000) -> tuple[str | None, int]:
     """Fetch a JS-rendered page with Playwright. Returns (html, status_code)."""
     try:
-        from playwright.sync_api import sync_playwright  # type: ignore
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 900},
-            )
-            page = context.new_page()
-            response = page.goto(url, wait_until="domcontentloaded", timeout=25000)
-            status = response.status if response else 0
-            if status == 404:
-                browser.close()
-                return None, 404
-            page.wait_for_timeout(wait_ms)
-            html = page.content()
-            browser.close()
-            return html, status
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_playwright_fetch_thread, url, wait_ms)
+            return future.result(timeout=35)
     except Exception as e:
         print(f"WARNING: Playwright fetch failed for {url}: {e}")
         return None, 0

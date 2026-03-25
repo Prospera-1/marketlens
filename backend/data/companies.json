@@ -1,0 +1,15 @@
+{
+  "automobile": [
+    { "name": "Hyundai", "url": "https://www.hyundai.com/" },
+    { "name": "Skoda Kushaq", "url": "https://www.carwale.com/skoda-cars/kushaq/" },
+    { "name": "Tata Nexon", "url": "https://www.carwale.com/tata-cars/nexon/" },
+    { "name": "Toyota Hyryder", "url": "https://www.carwale.com/toyota-cars/hyryder/" },
+    { "name": "Volkswagen Taigun", "url": "https://www.carwale.com/volkswagen-cars/taigun/" }
+  ],
+  "saas": [
+    { "name": "Slack", "url": "https://slack.com/" },
+    { "name": "Zoom", "url": "https://zoom.us/" },
+    { "name": "Teams", "url": "https://www.microsoft.com/microsoft-teams" }
+  ]
+}
+

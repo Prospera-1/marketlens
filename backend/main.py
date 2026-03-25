@@ -5,6 +5,9 @@ from typing import List
 import os
 import json
 import sys
+from dotenv import load_dotenv
+
+load_dotenv()  # loads GEMINI_API_KEY (and any other vars) from .env into os.environ
 
 # Ensure stdout/stderr can handle UTF-8 on Windows (avoids UnicodeEncodeError for
 # non-ASCII characters in print statements when the console uses cp1252).
@@ -15,11 +18,14 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
     except Exception:
         pass
 
-from backend.scraper import fetch_html, extract_data, save_snapshot
-from backend.review_scraper import scrape_all_reviews
-from backend.diff_engine import generate_diff
-from backend.insight_engine import generate_insights, detect_whitespace
+from backend.scraper import save_snapshot
+from backend.crawler import crawl_competitor
+from backend.diff_engine import generate_diff as compute_diff
+from backend.insight_engine import get_cached_insights, generate_and_cache_all
 from backend.seed_engine import seed_snapshots, get_tracked_urls
+from backend.positioning_engine import build_positioning_map
+from backend.trend_engine import build_trends
+from backend.ad_scraper import fetch_ads
 
 app = FastAPI(title="Competitor AI Dashboard API")
 
@@ -30,6 +36,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+snapshots_dir = os.path.join("backend", "data", "snapshots")
 
 
 class FetchRequest(BaseModel):
@@ -55,22 +64,11 @@ def fetch_competitors(req: FetchRequest):
     all_extracted_data = []
 
     for url in req.urls:
-        html = fetch_html(url)
-        if not html:
-            continue
-
-        data = extract_data(html, url)
-        if not data:
-            continue
-
-        # Enrich with review platform data
-        if req.include_reviews:
-            reviews = scrape_all_reviews(url)
-            data["reviews"] = reviews
-        else:
-            data["reviews"] = {"g2": None, "trustpilot": None}
-
-        all_extracted_data.append(data)
+        # crawl_competitor scrapes the root page + up to 5 key sub-pages,
+        # then merges all extracted data into one rich profile.
+        data = crawl_competitor(url, include_reviews=req.include_reviews)
+        if data:
+            all_extracted_data.append(data)
 
     if all_extracted_data:
         saved_file = save_snapshot(all_extracted_data)
@@ -129,19 +127,195 @@ def get_seed_urls():
 
 @app.get("/api/diff")
 def get_diff():
-    return generate_diff()
+    return compute_diff()
+
+
+@app.get("/api/positioning")
+def get_positioning():
+    """
+    Return competitive positioning map for all competitors in the latest snapshot.
+    Classifies each competitor on Cost, GTM, and Value-framing axes — no Gemini needed.
+    """
+    snapshots_dir = os.path.join("backend", "data", "snapshots")
+    files = sorted(
+        [f for f in os.listdir(snapshots_dir) if f.endswith(".json")],
+        reverse=True
+    ) if os.path.exists(snapshots_dir) else []
+
+    if not files:
+        return {"profiles": [], "axis_leaders": {}, "axes": {}}
+
+    with open(os.path.join(snapshots_dir, files[0]), "r", encoding="utf-8") as f:
+        latest = json.load(f)
+
+    competitors = latest.get("competitors_data", [])
+    return build_positioning_map(competitors)
 
 
 @app.get("/api/insights")
 def get_insights():
-    diff = generate_diff()
-    if diff.get("status") == "error":
-        return {"insights": [], "whitespace": []}
+    """Return cached insights + whitespace (no Gemini call). Fast for dashboard loads."""
+    return get_cached_insights()
 
-    insights_res = generate_insights(diff)
-    whitespace_res = detect_whitespace()
 
-    return {
-        "insights": insights_res.get("insights", []),
-        "whitespace": whitespace_res.get("whitespace", []),
-    }
+@app.post("/api/insights/generate")
+def generate_insights_endpoint():
+    """
+    Trigger a fresh Gemini generation of insights + whitespace and cache the result.
+    Call this explicitly — not on every page load — to avoid quota exhaustion.
+    """
+    try:
+        result = generate_and_cache_all()
+        errors = result.pop("errors", [])
+        if errors and not result["insights"] and not result["whitespace"]:
+            raise HTTPException(status_code=503, detail="; ".join(str(e) for e in errors))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class AdsRequest(BaseModel):
+    keyword: str
+    force_refresh: bool = False
+
+
+@app.post("/api/ads")
+def get_ads(req: AdsRequest):
+    """
+    Scrape Facebook Ad Library for a keyword (public search, no login).
+    Results are cached for 6 hours to avoid hammering the public UI.
+    """
+    try:
+        return fetch_ads(req.keyword, force_refresh=req.force_refresh)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/export")
+def export_report(format: str = "json"):
+    """
+    Download the full intelligence report (latest snapshot + diff + positioning + trends).
+    format: "json" or "csv"
+    """
+    try:
+        # Gather all data
+        snapshot_data = None
+        if os.path.exists(snapshots_dir):
+            files = sorted(os.listdir(snapshots_dir), reverse=True)
+            if files:
+                with open(os.path.join(snapshots_dir, files[0]), "r", encoding="utf-8") as f:
+                    snapshot_data = json.load(f)
+
+        diff_data       = compute_diff()
+        insights_data   = get_cached_insights()
+        trends_data     = build_trends()
+
+        positioning_data = {"profiles": [], "axis_leaders": {}, "overused_angles": []}
+        if snapshot_data:
+            competitors = snapshot_data.get("competitors_data", [])
+            positioning_data = build_positioning_map(competitors)
+
+        if format == "csv":
+            import io, csv
+            output = io.StringIO()
+            writer = csv.writer(output)
+
+            writer.writerow(["=== COMPETITORS ==="])
+            writer.writerow(["URL", "Title", "Pages Crawled", "Meta Description",
+                             "Hero Text", "Pricing", "Features", "CTAs", "Headings"])
+            for c in (snapshot_data or {}).get("competitors_data", []):
+                writer.writerow([
+                    c.get("url", ""),
+                    c.get("title", ""),
+                    c.get("pages_crawled", 1),
+                    c.get("meta_description", ""),
+                    "; ".join(c.get("hero_text") or []),
+                    "; ".join(c.get("pricing") or []),
+                    "; ".join(c.get("features") or []),
+                    "; ".join(c.get("ctas") or []),
+                    "; ".join(c.get("headings") or []),
+                ])
+
+            writer.writerow([])
+            writer.writerow(["=== CHANGES (DIFF) ==="])
+            writer.writerow(["Competitor", "Field", "Priority", "Score", "Added", "Removed"])
+            for ch in diff_data.get("changes", []):
+                writer.writerow([
+                    ch.get("competitor", ""),
+                    ch.get("field", ""),
+                    ch.get("priority", ""),
+                    ch.get("composite", ""),
+                    "; ".join(ch.get("added") or []),
+                    "; ".join(ch.get("removed") or []),
+                ])
+
+            writer.writerow([])
+            writer.writerow(["=== INSIGHTS ==="])
+            writer.writerow(["Title", "Description", "Action", "Composite Score"])
+            for ins in insights_data.get("insights", []):
+                writer.writerow([
+                    ins.get("title", ""),
+                    ins.get("description", ""),
+                    ins.get("action", ""),
+                    ins.get("scores", {}).get("composite", ""),
+                ])
+
+            writer.writerow([])
+            writer.writerow(["=== TRENDS ==="])
+            writer.writerow(["Type", "Description", "Significance"])
+            for t in trends_data.get("trends", []):
+                writer.writerow([t.get("type", ""), t.get("description", ""), t.get("significance", "")])
+
+            writer.writerow([])
+            writer.writerow(["=== OVERUSED ANGLES ==="])
+            writer.writerow(["Angle", "Saturation %", "Competitors", "Whitespace Hint"])
+            for a in positioning_data.get("overused_angles", []):
+                writer.writerow([
+                    a.get("angle", ""),
+                    f"{int(a.get('saturation', 0) * 100)}%",
+                    "; ".join(a.get("competitors", [])),
+                    a.get("whitespace_hint", ""),
+                ])
+
+            from fastapi.responses import StreamingResponse
+            output.seek(0)
+            return StreamingResponse(
+                iter([output.getvalue()]),
+                media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=market_intelligence_report.csv"}
+            )
+
+        # Default: JSON
+        report = {
+            "generated_at":   snapshot_data.get("timestamp") if snapshot_data else None,
+            "competitors":     (snapshot_data or {}).get("competitors_data", []),
+            "changes":         diff_data.get("changes", []),
+            "scoring_summary": diff_data.get("scoring_summary"),
+            "insights":        insights_data.get("insights", []),
+            "whitespace":      insights_data.get("whitespace", []),
+            "trends":          trends_data.get("trends", []),
+            "trend_summary":   trends_data.get("summary", {}),
+            "positioning":     positioning_data.get("profiles", []),
+            "overused_angles": positioning_data.get("overused_angles", []),
+        }
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content=report,
+            headers={"Content-Disposition": "attachment; filename=market_intelligence_report.json"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/trends")
+def get_trends():
+    """
+    Aggregate all saved snapshots and return trend analysis:
+    rising/falling signals, volatile fields, converging themes, and stable baselines.
+    """
+    try:
+        return build_trends()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
