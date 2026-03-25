@@ -41,7 +41,7 @@ def generate_insights(diff_data: Dict[str, Any]) -> Dict[str, Any]:
     
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.0-flash',
             contents=prompt,
         )
         
@@ -91,7 +91,7 @@ def detect_whitespace() -> Dict[str, Any]:
     
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.0-flash',
             contents=prompt,
         )
         

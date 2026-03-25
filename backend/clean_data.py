@@ -20,19 +20,47 @@ def clean_text_list(texts, min_len=5, max_len=150, is_price=False):
             
         # 2. Filter out obvious UI navigation terms and boilerplate
         nav_terms = {
-            'shop', 'finance', 'support', 'resources', 'tools', 'sell', 'buy', 
+            'shop', 'finance', 'support', 'resources', 'tools', 'sell', 'buy',
             'home', 'about', 'contact', 'menu', 'sign in', 'log in', 'search',
             'find a dealer', 'inventory', 'build & price', 'explore', 'compare',
             'popular categories', 'buyer resources', 'selling resources',
-            'research & news', 'tools & services', 'our company'
+            'research & news', 'tools & services', 'our company',
+            'login / register', 'login/register', 'register', 'login',
+            'explore new cars', 'new cars', 'used cars', 'news & reviews',
+            'download app', 'view all', 'read more', 'view details',
+            'call dealer', 'contact dealer', 'write a review', 'view march offers',
+            'download brochure', 'emi calculator', 'view all answers',
         }
         if text.lower() in nav_terms:
             continue
-            
-        # 3. Specific price/number parsing logic if looking for deals
+
+        # 2b. Prefix-based nav link patterns (e.g. "View All Wagon R Reviews", "Start a new Comparison")
+        nav_prefixes = ('view all', 'see all', 'show all', 'load more', 'start a new',
+                        'read all', 'show more', 'latest questions', 'popular mentions')
+        if text.lower().startswith(nav_prefixes):
+            continue
+
+        # 3. For features (not pricing), exclude items that look like non-content cards.
+        #    Pricing cards: contain currency/vehicle signals → belong in pricing field.
+        #    Dealer cards: contain dealer/branch signals.
+        #    Video/media metadata: contain view counts or timestamps.
+        listing_signals = {
+            'lakh', '\u20b9', 'rs.', ' rs ', 'petrol', 'cng', 'diesel',   # vehicle/price
+            'preferred dealer', 'call dealer', 'contact dealer',           # dealer cards
+            'k views', 'views by', 'years ago', 'months ago',             # video metadata
+        }
+        if not is_price and any(sig in text.lower() for sig in listing_signals):
+            continue
+
+        # 4. Specific price/number parsing logic if looking for deals
         if is_price:
-            # Must contain a number or a dollar sign to be considered price/deal info
-            if not any(char.isdigit() for char in text) and '$' not in text:
+            # Must contain a number to be considered price/deal info
+            if not any(char.isdigit() for char in text):
+                continue
+            # Exclude rating widgets that happen to contain a currency symbol
+            # e.g. "4.7 102 Reviews Rate & Win ₹1000"
+            review_rating_signals = {'reviews rate', 'rate & win', 'win \u20b9', 'win $', 'rate and win'}
+            if any(sig in text.lower() for sig in review_rating_signals):
                 continue
                 
         # 4. Remove exact duplicates (case-insensitive)
@@ -47,25 +75,25 @@ def clean_text_list(texts, min_len=5, max_len=150, is_price=False):
 
 def display_data(data):
     print("="*70)
-    print(f"🏢 COMPETITOR: {data.get('title', 'N/A')}")
-    print(f"🔗 URL:       {data.get('url', 'N/A')}")
+    print(f"COMPETITOR: {data.get('title', 'N/A')}")
+    print(f"URL:        {data.get('url', 'N/A')}")
     print("="*70)
     
-    print("\n📌 KEY MESSAGING & HEADINGS:")
+    print("\nKEY MESSAGING & HEADINGS:")
     cleaned_headings = clean_text_list(data.get('headings', []), min_len=10, max_len=100)
     for i, item in enumerate(cleaned_headings[:8], 1): # type: ignore
         print(f"  {i}. {item}")
     if not cleaned_headings:
         print("  (No relevant headings found)")
         
-    print("\n✨ NOTABLE FEATURES & SERVICES:")
+    print("\nNOTABLE FEATURES & SERVICES:")
     cleaned_features = clean_text_list(data.get('features', []), min_len=15, max_len=120)
     for i, item in enumerate(cleaned_features[:10], 1): # type: ignore
         print(f"  {i}. {item}")
     if not cleaned_features:
         print("  (No relevant features found)")
         
-    print("\n💰 PRICING, DEALS & INVENTORY:")
+    print("\nPRICING, DEALS & INVENTORY:")
     cleaned_pricing = clean_text_list(data.get('pricing', []), min_len=5, max_len=150, is_price=True)
     # Filter out duplicate substrings to make it even cleaner
     final_pricing = []
@@ -82,15 +110,15 @@ def display_data(data):
 def main():
     latest = get_latest_snapshot()
     if not latest:
-        print("❌ No snapshots found in the 'snapshots' directory!")
+        print("ERROR: No snapshots found in the 'snapshots' directory!")
         return
         
-    print(f"\n📊 DATA REPORT (Source: {latest})\n")
+    print(f"\nDATA REPORT (Source: {latest})\n")
     with open(latest, 'r', encoding='utf-8') as f:
         try:
             snapshot = json.load(f)
         except json.JSONDecodeError:
-            print(f"❌ Error: {latest} is not a valid JSON file.")
+            print(f"ERROR: {latest} is not a valid JSON file.")
             return
         
     competitors = snapshot.get('competitors_data', [])
@@ -101,7 +129,7 @@ def main():
     for comp in competitors:
         display_data(comp)
         
-    print(f"✅ Displayed {len(competitors)} competitor profile(s).")
+    print(f"Displayed {len(competitors)} competitor profile(s).")
 
 if __name__ == '__main__':
     main()
