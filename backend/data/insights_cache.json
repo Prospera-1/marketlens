@@ -1,92 +1,10 @@
 {
-  "insights": [
-    {
-      "title": "New Major Competitor in Auto Market",
-      "description": "The detection of Tata Motors Cars as a new competitor signals an active expansion or increased visibility of a major, established automotive player in our competitive landscape. This matters because new significant entrants can disrupt existing market share, pricing structures, and customer expectations, potentially challenging our current market positioning and growth targets.",
-      "action": "Initiate an immediate competitive deep-dive into Tata Motors' current vehicle portfolio, pricing strategies, brand perception, and recent market performance to assess the immediate threat and identify potential vulnerabilities.",
-      "scores": {
-        "novelty": 7,
-        "frequency": 3,
-        "relevance": 9,
-        "composite": 6.3
-      },
-      "source_traces": [
-        {
-          "url": "https://cars.tatamotors.com/",
-          "field": "type",
-          "snippet": "new_competitor"
-        },
-        {
-          "url": "https://cars.tatamotors.com/",
-          "field": "description",
-          "snippet": "New competitor detected: Tata Motors Cars - Sedans, Hatchbacks, SUVs | Tata Motors Limited"
-        }
-      ]
-    },
-    {
-      "title": "Broad Segment Entry by New Competitor",
-      "description": "Tata Motors' explicit mention of Sedans, Hatchbacks, and SUVs indicates a broad-spectrum approach targeting key consumer vehicle segments. This comprehensive entry into multiple core segments suggests a direct competitive threat across our product lines, potentially leading to increased competition for customer attention and sales volume in these crucial areas.",
-      "action": "Conduct a detailed product-to-product comparison, benchmarking our Sedans, Hatchbacks, and SUVs against Tata Motors' offerings in terms of features, pricing, and target demographics to identify areas of direct overlap and potential differentiation opportunities.",
-      "scores": {
-        "novelty": 6,
-        "frequency": 4,
-        "relevance": 8,
-        "composite": 6.0
-      },
-      "source_traces": [
-        {
-          "url": "https://cars.tatamotors.com/",
-          "field": "description",
-          "snippet": "New competitor detected: Tata Motors Cars - Sedans, Hatchbacks, SUVs | Tata Motors Limited"
-        }
-      ]
-    },
-    {
-      "title": "Established Conglomerate's Renewed Focus",
-      "description": "The emergence of 'Tata Motors Limited' as a new competitor underscores that this is a strategic move by a large, well-resourced conglomerate, not a nascent startup. This matters because an established player brings significant financial backing, R&D capabilities, and an existing distribution network, suggesting a serious, long-term commitment to capturing market share that could exert sustained pressure on pricing and innovation.",
-      "action": "Analyze Tata Motors' corporate strategic announcements, investor relations reports, and recent technology investments (e.g., EVs, autonomous driving) to anticipate their long-term competitive strategy and potential disruptive innovations.",
-      "scores": {
-        "novelty": 7,
-        "frequency": 3,
-        "relevance": 9,
-        "composite": 6.3
-      },
-      "source_traces": [
-        {
-          "url": "https://cars.tatamotors.com/",
-          "field": "description",
-          "snippet": "New competitor detected: Tata Motors Cars - Sedans, Hatchbacks, SUVs | Tata Motors Limited"
-        }
-      ]
-    }
-  ],
-  "whitespace": [
-    {
-      "description": "No competitor offers detailed, comparable feature lists or clear explanations of their 'best-in-class' claims (e.g., specific safety technologies, performance metrics, or unique tech innovations). Customers struggle to understand the tangible value and differentiate between models without this information.",
-      "opportunity_score": 9,
-      "suggested_action": "Create a comprehensive 'Features & Technology' section for each vehicle model, including interactive breakdowns of safety systems, engine specifications, infotainment features, and unique selling points. Implement a comparison tool allowing users to directly compare specific features across multiple models.",
-      "supporting_evidence": "The `features` array for the competitor is empty. The `meta_description` mentions 'best-in-class safety, performance and technology' but provides no specifics, indicating a lack of detailed feature exposition."
-    },
-    {
-      "description": "The competitor only lists 'starting prices' and 'ex-showroom prices', but there's a significant lack of transparency around financing options, EMI calculators, leasing programs, or estimated total cost of ownership (e.g., insurance, maintenance packages). This leaves customers in the dark about the true affordability and long-term financial commitment.",
-      "opportunity_score": 8,
-      "suggested_action": "Integrate an interactive EMI calculator on product pages, partner with financial institutions to offer pre-approved loan options, and clearly outline different leasing plans. Offer transparent maintenance and service packages that detail long-term ownership costs.",
-      "supporting_evidence": "The `pricing` data only includes 'Price starts at' and 'Introductory ex-showroom price' for various models. There is no mention of financing, EMI, leasing, or total cost of ownership in the provided data."
-    },
-    {
-      "description": "There is a complete absence of social proof such as customer testimonials, reviews, or case studies. In a high-consideration purchase like a car, potential buyers heavily rely on the experiences and endorsements of existing customers to build trust and validate their decision.",
-      "opportunity_score": 7,
-      "suggested_action": "Implement a dedicated 'Customer Stories' or 'Testimonials' section on the website, featuring written reviews, video testimonials, and user-generated content from satisfied car owners. Encourage and showcase customer ratings for specific models.",
-      "supporting_evidence": "The `testimonials` array in the competitor data is empty, indicating no presence of customer reviews or endorsements."
-    },
-    {
-      "description": "No competitor offers a personalized vehicle recommendation engine or an advanced online car configurator. Customers currently have to browse broad categories (SUVs, sedans) without tools that help them filter based on their specific lifestyle, budget, or feature preferences, leading to a less efficient and engaging discovery process.",
-      "opportunity_score": 7,
-      "suggested_action": "Develop an interactive quiz or 'Find Your Perfect Car' tool that asks users about their needs (e.g., family size, usage, budget, desired features) and recommends suitable models. Build an advanced online configurator allowing users to customize trim levels, colors, accessories, and view real-time price updates.",
-      "supporting_evidence": "The competitor's `ctas` include 'Learn more' and 'Book Now,' but there are no CTAs or descriptions indicating a 'configure your car,' 'build your own,' or 'get recommendations' feature."
-    }
-  ],
-  "generated_at": "2026-03-26T03:26:35",
-  "snapshot_timestamp": "2026-03-26T03:20:59.819433",
-  "errors": []
+  "insights": [],
+  "whitespace": [],
+  "generated_at": "2026-03-26T07:26:02",
+  "snapshot_timestamp": "2026-03-26T07:23:07.039969",
+  "errors": [
+    "Insights: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}",
+    "Whitespace: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key not valid. Please pass a valid API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key not valid. Please pass a valid API key.'}]}}"
+  ]
 }
