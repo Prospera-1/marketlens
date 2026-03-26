@@ -303,6 +303,7 @@ Fed the latest snapshot data, Gemini identifies **3–5 whitespace opportunities
 #### Caching Architecture
 Insights are **cached to disk** (`backend/data/insights_cache.json`, auto-generated at runtime and listed in `.gitignore` so it is never committed) keyed by snapshot timestamp. `GET /api/insights` returns the cache instantly (no Gemini call). `POST /api/insights/generate` triggers a fresh generation explicitly. This prevents quota exhaustion from multiple page loads and gives teams control over API usage.
 
+
 ---
 
 ## 📈 Trend Analysis Engine
