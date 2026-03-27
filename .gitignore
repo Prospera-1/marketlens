@@ -3,6 +3,7 @@
 
 # Application Data & Snapshots
 backend/data/snapshots/*.json
+backend/data/insights_cache.json
 
 # Python
 __pycache__/
