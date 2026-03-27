@@ -443,7 +443,7 @@ All endpoints served from `http://localhost:8000`:
 ### Frontend
 | Technology | Purpose |
 |---|---|
-| **React 18** | UI framework |
+| **React 19** | UI framework |
 | **Vite** | Build tool and dev server |
 | **TailwindCSS** | Utility-first styling |
 | **Axios** | API client |
